@@ -1,0 +1,8 @@
+/bin/
+/dist/
+/out/
+*.env
+!*.env.example
+.DS_Store
+.idea/
+.vscode/

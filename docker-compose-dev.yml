@@ -1,0 +1,11 @@
+services:
+  mcp-holded-dev:
+    image: golang:1.25.7
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    tty: true
+    stdin_open: true
+    env_file:
+      - path: mcp-holded-dev.env
+        required: false
