@@ -13,27 +13,27 @@ import (
 
 type NumberingSeriesListParams struct {
 	ListParams
-	DocType string `json:"doc_type" jsonschema:"description=Document type"`
+	DocType string `json:"doc_type" jsonschema:"required,description=Document type"`
 }
 
 type NumberingSeriesCreateParams struct {
-	DocType    string `json:"doc_type" jsonschema:"description=Document type"`
-	Name       string `json:"name" jsonschema:"description=Series name"`
+	DocType    string `json:"doc_type" jsonschema:"required,description=Document type"`
+	Name       string `json:"name" jsonschema:"required,description=Series name"`
 	Prefix     string `json:"prefix,omitempty" jsonschema:"description=Series prefix"`
-	NextNumber int    `json:"nextNumber,omitempty" jsonschema:"description=Next number in the series"`
+	NextNumber int    `json:"next_number,omitempty" jsonschema:"description=Next number in the series"`
 }
 
 type NumberingSeriesUpdateParams struct {
-	DocType    string `json:"doc_type" jsonschema:"description=Document type"`
-	SerieID    string `json:"serie_id" jsonschema:"description=Numbering series ID"`
+	DocType    string `json:"doc_type" jsonschema:"required,description=Document type"`
+	SerieID    string `json:"serie_id" jsonschema:"required,description=Numbering series ID"`
 	Name       string `json:"name,omitempty" jsonschema:"description=Series name"`
 	Prefix     string `json:"prefix,omitempty" jsonschema:"description=Series prefix"`
-	NextNumber int    `json:"nextNumber,omitempty" jsonschema:"description=Next number in the series"`
+	NextNumber int    `json:"next_number,omitempty" jsonschema:"description=Next number in the series"`
 }
 
 type NumberingSeriesIDParams struct {
-	DocType string `json:"doc_type" jsonschema:"description=Document type"`
-	SerieID string `json:"serie_id" jsonschema:"description=Numbering series ID"`
+	DocType string `json:"doc_type" jsonschema:"required,description=Document type"`
+	SerieID string `json:"serie_id" jsonschema:"required,description=Numbering series ID"`
 }
 
 func numberingSeriesList(ctx context.Context, args NumberingSeriesListParams) (any, error) {
@@ -44,7 +44,7 @@ func numberingSeriesList(ctx context.Context, args NumberingSeriesListParams) (a
 	if err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.numbering_series.list", false, http.MethodGet, "/numberseries/"+args.DocType, q, nil, meta)
+	return doJSONList(ctx, "holded.numbering_series.list", "/numberseries/"+args.DocType, q, meta, args.Fields)
 }
 
 func numberingSeriesCreate(ctx context.Context, args NumberingSeriesCreateParams) (any, error) {
@@ -66,7 +66,7 @@ func numberingSeriesUpdate(ctx context.Context, args NumberingSeriesUpdateParams
 		return nil, err
 	}
 	body := compactBody(map[string]any{"name": args.Name, "prefix": args.Prefix, "nextNumber": args.NextNumber})
-	return doJSON(ctx, "holded.numbering_series.update", true, http.MethodPut, "/numberseries/"+args.DocType+"/"+args.SerieID, url.Values{}, body, nil)
+	return doJSON(ctx, "holded.numbering_series.update", true, http.MethodPut, "/numberseries/"+args.DocType+"/"+url.PathEscape(args.SerieID), url.Values{}, body, nil)
 }
 
 func numberingSeriesDelete(ctx context.Context, args NumberingSeriesIDParams) (any, error) {
@@ -76,7 +76,7 @@ func numberingSeriesDelete(ctx context.Context, args NumberingSeriesIDParams) (a
 	if err := internal.RequireID(args.SerieID, "serie_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.numbering_series.delete", true, http.MethodDelete, "/numberseries/"+args.DocType+"/"+args.SerieID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.numbering_series.delete", true, http.MethodDelete, "/numberseries/"+args.DocType+"/"+url.PathEscape(args.SerieID), url.Values{}, nil, nil)
 }
 
 func AddNumberingSeriesTools(m *server.MCPServer) {
@@ -87,37 +87,51 @@ func AddNumberingSeriesTools(m *server.MCPServer) {
 }
 
 type WarehouseCreateParams struct {
-	Name       string `json:"name" jsonschema:"description=Warehouse name"`
+	Name       string `json:"name" jsonschema:"required,description=Warehouse name"`
 	Address    string `json:"address,omitempty" jsonschema:"description=Warehouse address"`
 	City       string `json:"city,omitempty" jsonschema:"description=City"`
-	PostalCode string `json:"postalCode,omitempty" jsonschema:"description=Postal code"`
+	PostalCode string `json:"postal_code,omitempty" jsonschema:"description=Postal code"`
 	Province   string `json:"province,omitempty" jsonschema:"description=Province"`
 	Country    string `json:"country,omitempty" jsonschema:"description=Country"`
 }
 
 type WarehouseUpdateParams struct {
-	WarehouseID string `json:"warehouse_id" jsonschema:"description=Warehouse ID"`
+	WarehouseID string `json:"warehouse_id" jsonschema:"required,description=Warehouse ID"`
 	WarehouseCreateParams
 }
 
 type WarehouseIDParams struct {
-	WarehouseID string `json:"warehouse_id" jsonschema:"description=Warehouse ID"`
+	WarehouseID string `json:"warehouse_id" jsonschema:"required,description=Warehouse ID"`
 }
 
 type WarehouseStockListParams struct {
 	ListParams
-	WarehouseID string `json:"warehouse_id" jsonschema:"description=Warehouse ID"`
+	WarehouseID string `json:"warehouse_id" jsonschema:"required,description=Warehouse ID"`
 }
 
 func warehousesList(ctx context.Context, args ListParams) (any, error) {
 	return listSimple(ctx, "holded.warehouses.list", "/warehouses", args)
 }
 
+// warehouseBody maps the snake_case MCP params onto the camelCase JSON body
+// the Holded API expects.
+func warehouseBody(args WarehouseCreateParams) map[string]any {
+	body := compactBody(map[string]any{
+		"address":    args.Address,
+		"city":       args.City,
+		"postalCode": args.PostalCode,
+		"province":   args.Province,
+		"country":    args.Country,
+	})
+	body["name"] = args.Name
+	return body
+}
+
 func warehouseCreate(ctx context.Context, args WarehouseCreateParams) (any, error) {
 	if err := internal.RequireID(args.Name, "name"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.warehouses.create", true, http.MethodPost, "/warehouses", url.Values{}, args, nil)
+	return doJSON(ctx, "holded.warehouses.create", true, http.MethodPost, "/warehouses", url.Values{}, warehouseBody(args), nil)
 }
 
 func warehouseStockList(ctx context.Context, args WarehouseStockListParams) (any, error) {
@@ -128,28 +142,31 @@ func warehouseStockList(ctx context.Context, args WarehouseStockListParams) (any
 	if err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.warehouses.stock.list", false, http.MethodGet, "/warehouses/"+args.WarehouseID+"/stock", q, nil, meta)
+	return doJSONList(ctx, "holded.warehouses.stock.list", "/warehouses/"+url.PathEscape(args.WarehouseID)+"/stock", q, meta, args.Fields)
 }
 
 func warehouseGet(ctx context.Context, args WarehouseIDParams) (any, error) {
 	if err := internal.RequireID(args.WarehouseID, "warehouse_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.warehouses.get", false, http.MethodGet, "/warehouses/"+args.WarehouseID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.warehouses.get", false, http.MethodGet, "/warehouses/"+url.PathEscape(args.WarehouseID), url.Values{}, nil, nil)
 }
 
 func warehouseUpdate(ctx context.Context, args WarehouseUpdateParams) (any, error) {
 	if err := internal.RequireID(args.WarehouseID, "warehouse_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.warehouses.update", true, http.MethodPut, "/warehouses/"+args.WarehouseID, url.Values{}, args.WarehouseCreateParams, nil)
+	if err := internal.RequireID(args.Name, "name"); err != nil {
+		return nil, err
+	}
+	return doJSON(ctx, "holded.warehouses.update", true, http.MethodPut, "/warehouses/"+url.PathEscape(args.WarehouseID), url.Values{}, warehouseBody(args.WarehouseCreateParams), nil)
 }
 
 func warehouseDelete(ctx context.Context, args WarehouseIDParams) (any, error) {
 	if err := internal.RequireID(args.WarehouseID, "warehouse_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.warehouses.delete", true, http.MethodDelete, "/warehouses/"+args.WarehouseID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.warehouses.delete", true, http.MethodDelete, "/warehouses/"+url.PathEscape(args.WarehouseID), url.Values{}, nil, nil)
 }
 
 func AddWarehouseTools(m *server.MCPServer) {
@@ -162,17 +179,17 @@ func AddWarehouseTools(m *server.MCPServer) {
 }
 
 type PaymentCreateParams struct {
-	Name string `json:"name" jsonschema:"description=Payment method name"`
+	Name string `json:"name" jsonschema:"required,description=Payment method name"`
 	Days int    `json:"days,omitempty" jsonschema:"description=Days until due"`
 }
 
 type PaymentUpdateParams struct {
-	PaymentID string `json:"payment_id" jsonschema:"description=Payment ID"`
+	PaymentID string `json:"payment_id" jsonschema:"required,description=Payment ID"`
 	PaymentCreateParams
 }
 
 type PaymentIDParams struct {
-	PaymentID string `json:"payment_id" jsonschema:"description=Payment ID"`
+	PaymentID string `json:"payment_id" jsonschema:"required,description=Payment ID"`
 }
 
 func paymentsList(ctx context.Context, args ListParams) (any, error) {
@@ -190,21 +207,21 @@ func paymentGet(ctx context.Context, args PaymentIDParams) (any, error) {
 	if err := internal.RequireID(args.PaymentID, "payment_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.payments.get", false, http.MethodGet, "/payments/"+args.PaymentID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.payments.get", false, http.MethodGet, "/payments/"+url.PathEscape(args.PaymentID), url.Values{}, nil, nil)
 }
 
 func paymentUpdate(ctx context.Context, args PaymentUpdateParams) (any, error) {
 	if err := internal.RequireID(args.PaymentID, "payment_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.payments.update", true, http.MethodPut, "/payments/"+args.PaymentID, url.Values{}, args.PaymentCreateParams, nil)
+	return doJSON(ctx, "holded.payments.update", true, http.MethodPut, "/payments/"+url.PathEscape(args.PaymentID), url.Values{}, args.PaymentCreateParams, nil)
 }
 
 func paymentDelete(ctx context.Context, args PaymentIDParams) (any, error) {
 	if err := internal.RequireID(args.PaymentID, "payment_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.payments.delete", true, http.MethodDelete, "/payments/"+args.PaymentID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.payments.delete", true, http.MethodDelete, "/payments/"+url.PathEscape(args.PaymentID), url.Values{}, nil, nil)
 }
 
 func AddPaymentTools(m *server.MCPServer) {
@@ -216,7 +233,7 @@ func AddPaymentTools(m *server.MCPServer) {
 }
 
 type ServiceCreateParams struct {
-	Name        string  `json:"name" jsonschema:"description=Service name"`
+	Name        string  `json:"name" jsonschema:"required,description=Service name"`
 	SKU         string  `json:"sku,omitempty" jsonschema:"description=Service SKU"`
 	Price       float64 `json:"price,omitempty" jsonschema:"description=Service price"`
 	Tax         float64 `json:"tax,omitempty" jsonschema:"description=Tax percentage"`
@@ -224,12 +241,12 @@ type ServiceCreateParams struct {
 }
 
 type ServiceUpdateParams struct {
-	ServiceID string `json:"service_id" jsonschema:"description=Service ID"`
+	ServiceID string `json:"service_id" jsonschema:"required,description=Service ID"`
 	ServiceCreateParams
 }
 
 type ServiceIDParams struct {
-	ServiceID string `json:"service_id" jsonschema:"description=Service ID"`
+	ServiceID string `json:"service_id" jsonschema:"required,description=Service ID"`
 }
 
 func servicesList(ctx context.Context, args ListParams) (any, error) {
@@ -247,21 +264,21 @@ func serviceGet(ctx context.Context, args ServiceIDParams) (any, error) {
 	if err := internal.RequireID(args.ServiceID, "service_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.services.get", false, http.MethodGet, "/services/"+args.ServiceID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.services.get", false, http.MethodGet, "/services/"+url.PathEscape(args.ServiceID), url.Values{}, nil, nil)
 }
 
 func serviceUpdate(ctx context.Context, args ServiceUpdateParams) (any, error) {
 	if err := internal.RequireID(args.ServiceID, "service_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.services.update", true, http.MethodPut, "/services/"+args.ServiceID, url.Values{}, args.ServiceCreateParams, nil)
+	return doJSON(ctx, "holded.services.update", true, http.MethodPut, "/services/"+url.PathEscape(args.ServiceID), url.Values{}, args.ServiceCreateParams, nil)
 }
 
 func serviceDelete(ctx context.Context, args ServiceIDParams) (any, error) {
 	if err := internal.RequireID(args.ServiceID, "service_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.services.delete", true, http.MethodDelete, "/services/"+args.ServiceID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.services.delete", true, http.MethodDelete, "/services/"+url.PathEscape(args.ServiceID), url.Values{}, nil, nil)
 }
 
 func AddServiceTools(m *server.MCPServer) {

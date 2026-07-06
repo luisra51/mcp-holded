@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 
@@ -16,12 +17,12 @@ type ProductsListParams struct {
 }
 
 type ProductCreateParams struct {
-	Name        string  `json:"name" jsonschema:"description=Product name"`
+	Name        string  `json:"name" jsonschema:"required,description=Product name"`
 	SKU         string  `json:"sku,omitempty" jsonschema:"description=Product SKU"`
 	Barcode     string  `json:"barcode,omitempty" jsonschema:"description=Product barcode"`
 	Price       float64 `json:"price,omitempty" jsonschema:"description=Product price"`
 	Cost        float64 `json:"cost,omitempty" jsonschema:"description=Product cost"`
-	CostPrice   float64 `json:"costPrice,omitempty" jsonschema:"description=Product cost price"`
+	CostPrice   float64 `json:"cost_price,omitempty" jsonschema:"description=Product cost price"`
 	Tax         float64 `json:"tax,omitempty" jsonschema:"description=Tax percentage"`
 	Description string  `json:"description,omitempty" jsonschema:"description=Product description"`
 	Unit        string  `json:"unit,omitempty" jsonschema:"description=Unit name"`
@@ -30,23 +31,23 @@ type ProductCreateParams struct {
 }
 
 type ProductUpdateParams struct {
-	ProductID string `json:"product_id" jsonschema:"description=Product ID"`
+	ProductID string `json:"product_id" jsonschema:"required,description=Product ID"`
 	ProductCreateParams
 }
 
 type ProductIDParams struct {
-	ProductID string `json:"product_id" jsonschema:"description=Product ID"`
+	ProductID string `json:"product_id" jsonschema:"required,description=Product ID"`
 }
 
 type ProductImageParams struct {
-	ProductID string `json:"product_id" jsonschema:"description=Product ID"`
-	ImageID   string `json:"image_id" jsonschema:"description=Image ID"`
+	ProductID string `json:"product_id" jsonschema:"required,description=Product ID"`
+	ImageID   string `json:"image_id" jsonschema:"required,description=Image ID"`
 }
 
 type ProductStockUpdateParams struct {
-	ProductID   string `json:"product_id" jsonschema:"description=Product ID"`
+	ProductID   string `json:"product_id" jsonschema:"required,description=Product ID"`
 	WarehouseID string `json:"warehouse_id,omitempty" jsonschema:"description=Warehouse ID"`
-	Units       int    `json:"units" jsonschema:"description=Units to add or subtract"`
+	Units       int    `json:"units" jsonschema:"required,description=Units to add (positive) or subtract (negative); cannot be 0"`
 }
 
 func productsList(ctx context.Context, args ProductsListParams) (any, error) {
@@ -54,54 +55,81 @@ func productsList(ctx context.Context, args ProductsListParams) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.products.list", false, http.MethodGet, "/products", q, nil, meta)
+	return doJSONList(ctx, "holded.products.list", "/products", q, meta, args.Fields)
+}
+
+// productBody maps the snake_case MCP params onto the camelCase JSON body the
+// Holded API expects.
+func productBody(args ProductCreateParams) map[string]any {
+	body := compactBody(map[string]any{
+		"sku":         args.SKU,
+		"barcode":     args.Barcode,
+		"price":       args.Price,
+		"cost":        args.Cost,
+		"costPrice":   args.CostPrice,
+		"tax":         args.Tax,
+		"description": args.Description,
+		"unit":        args.Unit,
+		"stock":       args.Stock,
+		"kind":        args.Kind,
+	})
+	body["name"] = args.Name
+	return body
+}
+
+func validateProductPayload(args ProductCreateParams) error {
+	if err := internal.RequireID(args.Name, "name"); err != nil {
+		return err
+	}
+	if args.Kind != "" {
+		return internal.RequireOneOf(args.Kind, "kind", "product", "service")
+	}
+	return nil
 }
 
 func productCreate(ctx context.Context, args ProductCreateParams) (any, error) {
-	if err := internal.RequireID(args.Name, "name"); err != nil {
+	if err := validateProductPayload(args); err != nil {
 		return nil, err
 	}
-	if args.Kind != "" {
-		if err := internal.RequireOneOf(args.Kind, "kind", "product", "service"); err != nil {
-			return nil, err
-		}
-	}
-	return doJSON(ctx, "holded.products.create", true, http.MethodPost, "/products", url.Values{}, args, nil)
+	return doJSON(ctx, "holded.products.create", true, http.MethodPost, "/products", url.Values{}, productBody(args), nil)
 }
 
 func productGet(ctx context.Context, args ProductIDParams) (any, error) {
 	if err := internal.RequireID(args.ProductID, "product_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.products.get", false, http.MethodGet, "/products/"+args.ProductID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.products.get", false, http.MethodGet, "/products/"+url.PathEscape(args.ProductID), url.Values{}, nil, nil)
 }
 
 func productUpdate(ctx context.Context, args ProductUpdateParams) (any, error) {
 	if err := internal.RequireID(args.ProductID, "product_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.products.update", true, http.MethodPut, "/products/"+args.ProductID, url.Values{}, args.ProductCreateParams, nil)
+	if err := validateProductPayload(args.ProductCreateParams); err != nil {
+		return nil, err
+	}
+	return doJSON(ctx, "holded.products.update", true, http.MethodPut, "/products/"+url.PathEscape(args.ProductID), url.Values{}, productBody(args.ProductCreateParams), nil)
 }
 
 func productDelete(ctx context.Context, args ProductIDParams) (any, error) {
 	if err := internal.RequireID(args.ProductID, "product_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.products.delete", true, http.MethodDelete, "/products/"+args.ProductID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.products.delete", true, http.MethodDelete, "/products/"+url.PathEscape(args.ProductID), url.Values{}, nil, nil)
 }
 
 func productMainImageGet(ctx context.Context, args ProductIDParams) (any, error) {
 	if err := internal.RequireID(args.ProductID, "product_id"); err != nil {
 		return nil, err
 	}
-	return doRawBase64(ctx, "holded.products.image.main.get", "/products/"+args.ProductID+"/image")
+	return doRawBase64(ctx, "holded.products.image.main.get", "/products/"+url.PathEscape(args.ProductID)+"/image")
 }
 
 func productImagesList(ctx context.Context, args ProductIDParams) (any, error) {
 	if err := internal.RequireID(args.ProductID, "product_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.products.images.list", false, http.MethodGet, "/products/"+args.ProductID+"/images", url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.products.images.list", false, http.MethodGet, "/products/"+url.PathEscape(args.ProductID)+"/images", url.Values{}, nil, nil)
 }
 
 func productImageGet(ctx context.Context, args ProductImageParams) (any, error) {
@@ -111,15 +139,21 @@ func productImageGet(ctx context.Context, args ProductImageParams) (any, error) 
 	if err := internal.RequireID(args.ImageID, "image_id"); err != nil {
 		return nil, err
 	}
-	return doRawBase64(ctx, "holded.products.images.get", "/products/"+args.ProductID+"/images/"+args.ImageID)
+	return doRawBase64(ctx, "holded.products.images.get", "/products/"+url.PathEscape(args.ProductID)+"/images/"+url.PathEscape(args.ImageID))
 }
 
 func productStockUpdate(ctx context.Context, args ProductStockUpdateParams) (any, error) {
 	if err := internal.RequireID(args.ProductID, "product_id"); err != nil {
 		return nil, err
 	}
-	body := compactBody(map[string]any{"warehouseId": args.WarehouseID, "units": args.Units})
-	return doJSON(ctx, "holded.products.stock.update", true, http.MethodPut, "/products/"+args.ProductID+"/stock", url.Values{}, body, nil)
+	if args.Units == 0 {
+		return nil, fmt.Errorf("units must be a non-zero positive or negative number")
+	}
+	body := map[string]any{"units": args.Units}
+	if args.WarehouseID != "" {
+		body["warehouseId"] = args.WarehouseID
+	}
+	return doJSON(ctx, "holded.products.stock.update", true, http.MethodPut, "/products/"+url.PathEscape(args.ProductID)+"/stock", url.Values{}, body, nil)
 }
 
 var (

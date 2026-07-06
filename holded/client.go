@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -81,7 +82,6 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 			attemptReq.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			attemptReq.ContentLength = int64(len(bodyBytes))
 		}
-		attemptReq.Header = req.Header.Clone()
 		attemptReq.Header.Set("key", c.APIKey)
 		resp, err := c.Client.Do(attemptReq)
 		if err != nil {
@@ -92,6 +92,9 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 		if _, retry := retryableStatusCodes[resp.StatusCode]; retry && attempt < len(delays)-1 {
+			if wait := retryAfterDelay(resp); wait > 0 {
+				delays[attempt+1] = wait
+			}
 			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			lastErr = fmt.Errorf("upstream api retryable status: %s", resp.Status)
@@ -100,6 +103,24 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 		return resp, nil
 	}
 	return nil, lastErr
+}
+
+// retryAfterDelay honors a Retry-After header expressed in seconds, capped at
+// 30s so a misbehaving upstream cannot stall the tool call.
+func retryAfterDelay(resp *http.Response) time.Duration {
+	v := strings.TrimSpace(resp.Header.Get("Retry-After"))
+	if v == "" {
+		return 0
+	}
+	secs, err := strconv.Atoi(v)
+	if err != nil || secs <= 0 {
+		return 0
+	}
+	d := time.Duration(secs) * time.Second
+	if d > 30*time.Second {
+		d = 30 * time.Second
+	}
+	return d
 }
 
 func (c *Client) NewRequest(method, path string, q url.Values, body any) (*http.Request, error) {

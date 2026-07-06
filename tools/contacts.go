@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/mark3labs/mcp-go/server"
 
@@ -22,41 +21,41 @@ type ContactsListParams struct {
 type ContactAddress struct {
 	Address    string `json:"address,omitempty" jsonschema:"description=Street address"`
 	City       string `json:"city,omitempty" jsonschema:"description=City"`
-	PostalCode string `json:"postalCode,omitempty" jsonschema:"description=Postal code"`
+	PostalCode string `json:"postal_code,omitempty" jsonschema:"description=Postal code"`
 	Province   string `json:"province,omitempty" jsonschema:"description=Province or region"`
 	Country    string `json:"country,omitempty" jsonschema:"description=Country"`
 }
 
 type ContactPerson struct {
-	Name  string `json:"name" jsonschema:"description=Contact person name"`
+	Name  string `json:"name" jsonschema:"required,description=Contact person name"`
 	Phone string `json:"phone,omitempty" jsonschema:"description=Contact person phone"`
 	Email string `json:"email,omitempty" jsonschema:"description=Contact person email"`
 }
 
 type ContactCreateParams struct {
-	Name           string          `json:"name" jsonschema:"description=Contact name"`
+	Name           string          `json:"name" jsonschema:"required,description=Contact name"`
 	Email          string          `json:"email,omitempty" jsonschema:"description=Contact email"`
 	Phone          string          `json:"phone,omitempty" jsonschema:"description=Contact phone number"`
 	Code           string          `json:"code,omitempty" jsonschema:"description=NIF CIF VAT or tax identification code"`
 	Type           string          `json:"type,omitempty" jsonschema:"description=Contact type: client|supplier|lead|debtor|creditor"`
-	BillAddress    *ContactAddress `json:"billAddress,omitempty" jsonschema:"description=Billing address"`
+	BillAddress    *ContactAddress `json:"bill_address,omitempty" jsonschema:"description=Billing address"`
 	Tradename      string          `json:"tradename,omitempty" jsonschema:"description=Trade name"`
 	Note           string          `json:"note,omitempty" jsonschema:"description=Contact notes"`
-	ContactPersons []ContactPerson `json:"contactPersons,omitempty" jsonschema:"description=Associated contact persons"`
+	ContactPersons []ContactPerson `json:"contact_persons,omitempty" jsonschema:"description=Associated contact persons"`
 }
 
 type ContactUpdateParams struct {
-	ContactID string `json:"contact_id" jsonschema:"description=Contact ID"`
+	ContactID string `json:"contact_id" jsonschema:"required,description=Contact ID"`
 	ContactCreateParams
 }
 
 type ContactIDParams struct {
-	ContactID string `json:"contact_id" jsonschema:"description=Contact ID"`
+	ContactID string `json:"contact_id" jsonschema:"required,description=Contact ID"`
 }
 
 type ContactAttachmentParams struct {
-	ContactID    string `json:"contact_id" jsonschema:"description=Contact ID"`
-	AttachmentID string `json:"attachment_id" jsonschema:"description=Attachment ID"`
+	ContactID    string `json:"contact_id" jsonschema:"required,description=Contact ID"`
+	AttachmentID string `json:"attachment_id" jsonschema:"required,description=Attachment ID"`
 }
 
 func contactsList(ctx context.Context, args ContactsListParams) (any, error) {
@@ -70,50 +69,91 @@ func contactsList(ctx context.Context, args ContactsListParams) (any, error) {
 	if args.Mobile != "" {
 		q.Set("mobile", args.Mobile)
 	}
-	if len(args.CustomID) > 0 {
-		q.Set("customId[]", strings.Join(args.CustomID, ","))
+	for _, id := range args.CustomID {
+		q.Add("customId[]", id)
 	}
-	return doJSON(ctx, "holded.contacts.list", false, http.MethodGet, "/contacts", q, nil, meta)
+	return doJSONList(ctx, "holded.contacts.list", "/contacts", q, meta, args.Fields)
+}
+
+// contactBody maps the snake_case MCP params onto the camelCase JSON body the
+// Holded API expects.
+func contactBody(args ContactCreateParams) map[string]any {
+	body := compactBody(map[string]any{
+		"email":     args.Email,
+		"phone":     args.Phone,
+		"code":      args.Code,
+		"type":      args.Type,
+		"tradename": args.Tradename,
+		"note":      args.Note,
+	})
+	body["name"] = args.Name
+	if args.BillAddress != nil {
+		body["billAddress"] = compactBody(map[string]any{
+			"address":    args.BillAddress.Address,
+			"city":       args.BillAddress.City,
+			"postalCode": args.BillAddress.PostalCode,
+			"province":   args.BillAddress.Province,
+			"country":    args.BillAddress.Country,
+		})
+	}
+	if len(args.ContactPersons) > 0 {
+		persons := make([]map[string]any, len(args.ContactPersons))
+		for i, p := range args.ContactPersons {
+			person := compactBody(map[string]any{"phone": p.Phone, "email": p.Email})
+			person["name"] = p.Name
+			persons[i] = person
+		}
+		body["contactPersons"] = persons
+	}
+	return body
+}
+
+func validateContactPayload(args ContactCreateParams) error {
+	if err := internal.RequireID(args.Name, "name"); err != nil {
+		return err
+	}
+	if args.Type != "" {
+		return internal.RequireOneOf(args.Type, "type", "client", "supplier", "lead", "debtor", "creditor")
+	}
+	return nil
 }
 
 func contactCreate(ctx context.Context, args ContactCreateParams) (any, error) {
-	if err := internal.RequireID(args.Name, "name"); err != nil {
+	if err := validateContactPayload(args); err != nil {
 		return nil, err
 	}
-	if args.Type != "" {
-		if err := internal.RequireOneOf(args.Type, "type", "client", "supplier", "lead", "debtor", "creditor"); err != nil {
-			return nil, err
-		}
-	}
-	return doJSON(ctx, "holded.contacts.create", true, http.MethodPost, "/contacts", url.Values{}, args, nil)
+	return doJSON(ctx, "holded.contacts.create", true, http.MethodPost, "/contacts", url.Values{}, contactBody(args), nil)
 }
 
 func contactGet(ctx context.Context, args ContactIDParams) (any, error) {
 	if err := internal.RequireID(args.ContactID, "contact_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.contacts.get", false, http.MethodGet, "/contacts/"+args.ContactID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.contacts.get", false, http.MethodGet, "/contacts/"+url.PathEscape(args.ContactID), url.Values{}, nil, nil)
 }
 
 func contactUpdate(ctx context.Context, args ContactUpdateParams) (any, error) {
 	if err := internal.RequireID(args.ContactID, "contact_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.contacts.update", true, http.MethodPut, "/contacts/"+args.ContactID, url.Values{}, args.ContactCreateParams, nil)
+	if err := validateContactPayload(args.ContactCreateParams); err != nil {
+		return nil, err
+	}
+	return doJSON(ctx, "holded.contacts.update", true, http.MethodPut, "/contacts/"+url.PathEscape(args.ContactID), url.Values{}, contactBody(args.ContactCreateParams), nil)
 }
 
 func contactDelete(ctx context.Context, args ContactIDParams) (any, error) {
 	if err := internal.RequireID(args.ContactID, "contact_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.contacts.delete", true, http.MethodDelete, "/contacts/"+args.ContactID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.contacts.delete", true, http.MethodDelete, "/contacts/"+url.PathEscape(args.ContactID), url.Values{}, nil, nil)
 }
 
 func contactAttachmentsList(ctx context.Context, args ContactIDParams) (any, error) {
 	if err := internal.RequireID(args.ContactID, "contact_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.contacts.attachments.list", false, http.MethodGet, "/contacts/"+args.ContactID+"/attachments", url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.contacts.attachments.list", false, http.MethodGet, "/contacts/"+url.PathEscape(args.ContactID)+"/attachments", url.Values{}, nil, nil)
 }
 
 func contactAttachmentGet(ctx context.Context, args ContactAttachmentParams) (any, error) {
@@ -123,7 +163,7 @@ func contactAttachmentGet(ctx context.Context, args ContactAttachmentParams) (an
 	if err := internal.RequireID(args.AttachmentID, "attachment_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.contacts.attachments.get", false, http.MethodGet, "/contacts/"+args.ContactID+"/attachments/"+args.AttachmentID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.contacts.attachments.get", false, http.MethodGet, "/contacts/"+url.PathEscape(args.ContactID)+"/attachments/"+url.PathEscape(args.AttachmentID), url.Values{}, nil, nil)
 }
 
 var (

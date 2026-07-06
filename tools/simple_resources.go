@@ -12,55 +12,55 @@ import (
 )
 
 type NameCodeParams struct {
-	Name string `json:"name" jsonschema:"description=Resource name"`
+	Name string `json:"name" jsonschema:"required,description=Resource name"`
 	Code string `json:"code,omitempty" jsonschema:"description=Resource code"`
 }
 
 type NameOnlyParams struct {
-	Name string `json:"name" jsonschema:"description=Resource name"`
+	Name string `json:"name" jsonschema:"required,description=Resource name"`
 }
 
 type TreasuryCreateParams struct {
-	Name    string  `json:"name" jsonschema:"description=Treasury account name"`
+	Name    string  `json:"name" jsonschema:"required,description=Treasury account name"`
 	IBAN    string  `json:"iban,omitempty" jsonschema:"description=IBAN"`
 	BIC     string  `json:"bic,omitempty" jsonschema:"description=BIC or SWIFT code"`
 	Balance float64 `json:"balance,omitempty" jsonschema:"description=Initial balance"`
 }
 
 type TreasuryIDParams struct {
-	TreasuryID string `json:"treasury_id" jsonschema:"description=Treasury account ID"`
+	TreasuryID string `json:"treasury_id" jsonschema:"required,description=Treasury account ID"`
 }
 
 type ExpenseAccountIDParams struct {
-	AccountID string `json:"account_id" jsonschema:"description=Expense account ID"`
+	AccountID string `json:"account_id" jsonschema:"required,description=Expense account ID"`
 }
 
 type ExpenseAccountUpdateParams struct {
-	AccountID string `json:"account_id" jsonschema:"description=Expense account ID"`
+	AccountID string `json:"account_id" jsonschema:"required,description=Expense account ID"`
 	Name      string `json:"name,omitempty" jsonschema:"description=Expense account name"`
 	Code      string `json:"code,omitempty" jsonschema:"description=Expense account code"`
 }
 
 type SalesChannelIDParams struct {
-	ChannelID string `json:"channel_id" jsonschema:"description=Sales channel ID"`
+	ChannelID string `json:"channel_id" jsonschema:"required,description=Sales channel ID"`
 }
 
 type SalesChannelUpdateParams struct {
-	ChannelID string `json:"channel_id" jsonschema:"description=Sales channel ID"`
-	Name      string `json:"name" jsonschema:"description=Sales channel name"`
+	ChannelID string `json:"channel_id" jsonschema:"required,description=Sales channel ID"`
+	Name      string `json:"name" jsonschema:"required,description=Sales channel name"`
 }
 
 type ContactGroupIDParams struct {
-	GroupID string `json:"group_id" jsonschema:"description=Contact group ID"`
+	GroupID string `json:"group_id" jsonschema:"required,description=Contact group ID"`
 }
 
 type ContactGroupUpdateParams struct {
-	GroupID string `json:"group_id" jsonschema:"description=Contact group ID"`
-	Name    string `json:"name" jsonschema:"description=Contact group name"`
+	GroupID string `json:"group_id" jsonschema:"required,description=Contact group ID"`
+	Name    string `json:"name" jsonschema:"required,description=Contact group name"`
 }
 
 type RemittanceIDParams struct {
-	RemittanceID string `json:"remittance_id" jsonschema:"description=Remittance ID"`
+	RemittanceID string `json:"remittance_id" jsonschema:"required,description=Remittance ID"`
 }
 
 func listSimple(ctx context.Context, toolName, path string, args ListParams) (any, error) {
@@ -68,7 +68,7 @@ func listSimple(ctx context.Context, toolName, path string, args ListParams) (an
 	if err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, toolName, false, http.MethodGet, path, q, nil, meta)
+	return doJSONList(ctx, toolName, path, q, meta, args.Fields)
 }
 
 func createNameCode(ctx context.Context, toolName, path string, args NameCodeParams) (any, error) {
@@ -100,7 +100,7 @@ func treasuryGet(ctx context.Context, args TreasuryIDParams) (any, error) {
 	if err := internal.RequireID(args.TreasuryID, "treasury_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.treasuries.get", false, http.MethodGet, "/treasury/"+args.TreasuryID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.treasuries.get", false, http.MethodGet, "/treasury/"+url.PathEscape(args.TreasuryID), url.Values{}, nil, nil)
 }
 
 func AddTreasuryTools(m *server.MCPServer) {
@@ -121,7 +121,7 @@ func expenseAccountGet(ctx context.Context, args ExpenseAccountIDParams) (any, e
 	if err := internal.RequireID(args.AccountID, "account_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.expense_accounts.get", false, http.MethodGet, "/expensesaccounts/"+args.AccountID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.expense_accounts.get", false, http.MethodGet, "/expensesaccounts/"+url.PathEscape(args.AccountID), url.Values{}, nil, nil)
 }
 
 func expenseAccountUpdate(ctx context.Context, args ExpenseAccountUpdateParams) (any, error) {
@@ -129,14 +129,14 @@ func expenseAccountUpdate(ctx context.Context, args ExpenseAccountUpdateParams) 
 		return nil, err
 	}
 	body := compactBody(map[string]any{"name": args.Name, "code": args.Code})
-	return doJSON(ctx, "holded.expense_accounts.update", true, http.MethodPut, "/expensesaccounts/"+args.AccountID, url.Values{}, body, nil)
+	return doJSON(ctx, "holded.expense_accounts.update", true, http.MethodPut, "/expensesaccounts/"+url.PathEscape(args.AccountID), url.Values{}, body, nil)
 }
 
 func expenseAccountDelete(ctx context.Context, args ExpenseAccountIDParams) (any, error) {
 	if err := internal.RequireID(args.AccountID, "account_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.expense_accounts.delete", true, http.MethodDelete, "/expensesaccounts/"+args.AccountID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.expense_accounts.delete", true, http.MethodDelete, "/expensesaccounts/"+url.PathEscape(args.AccountID), url.Values{}, nil, nil)
 }
 
 func AddExpenseAccountTools(m *server.MCPServer) {
@@ -159,7 +159,7 @@ func salesChannelGet(ctx context.Context, args SalesChannelIDParams) (any, error
 	if err := internal.RequireID(args.ChannelID, "channel_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.sales_channels.get", false, http.MethodGet, "/saleschannels/"+args.ChannelID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.sales_channels.get", false, http.MethodGet, "/saleschannels/"+url.PathEscape(args.ChannelID), url.Values{}, nil, nil)
 }
 
 func salesChannelUpdate(ctx context.Context, args SalesChannelUpdateParams) (any, error) {
@@ -169,14 +169,14 @@ func salesChannelUpdate(ctx context.Context, args SalesChannelUpdateParams) (any
 	if err := internal.RequireID(args.Name, "name"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.sales_channels.update", true, http.MethodPut, "/saleschannels/"+args.ChannelID, url.Values{}, map[string]any{"name": args.Name}, nil)
+	return doJSON(ctx, "holded.sales_channels.update", true, http.MethodPut, "/saleschannels/"+url.PathEscape(args.ChannelID), url.Values{}, map[string]any{"name": args.Name}, nil)
 }
 
 func salesChannelDelete(ctx context.Context, args SalesChannelIDParams) (any, error) {
 	if err := internal.RequireID(args.ChannelID, "channel_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.sales_channels.delete", true, http.MethodDelete, "/saleschannels/"+args.ChannelID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.sales_channels.delete", true, http.MethodDelete, "/saleschannels/"+url.PathEscape(args.ChannelID), url.Values{}, nil, nil)
 }
 
 func AddSalesChannelTools(m *server.MCPServer) {
@@ -207,7 +207,7 @@ func contactGroupGet(ctx context.Context, args ContactGroupIDParams) (any, error
 	if err := internal.RequireID(args.GroupID, "group_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.contact_groups.get", false, http.MethodGet, "/contactgroups/"+args.GroupID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.contact_groups.get", false, http.MethodGet, "/contactgroups/"+url.PathEscape(args.GroupID), url.Values{}, nil, nil)
 }
 
 func contactGroupUpdate(ctx context.Context, args ContactGroupUpdateParams) (any, error) {
@@ -217,14 +217,14 @@ func contactGroupUpdate(ctx context.Context, args ContactGroupUpdateParams) (any
 	if err := internal.RequireID(args.Name, "name"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.contact_groups.update", true, http.MethodPut, "/contactgroups/"+args.GroupID, url.Values{}, map[string]any{"name": args.Name}, nil)
+	return doJSON(ctx, "holded.contact_groups.update", true, http.MethodPut, "/contactgroups/"+url.PathEscape(args.GroupID), url.Values{}, map[string]any{"name": args.Name}, nil)
 }
 
 func contactGroupDelete(ctx context.Context, args ContactGroupIDParams) (any, error) {
 	if err := internal.RequireID(args.GroupID, "group_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.contact_groups.delete", true, http.MethodDelete, "/contactgroups/"+args.GroupID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.contact_groups.delete", true, http.MethodDelete, "/contactgroups/"+url.PathEscape(args.GroupID), url.Values{}, nil, nil)
 }
 
 func AddContactGroupTools(m *server.MCPServer) {
@@ -243,7 +243,7 @@ func remittanceGet(ctx context.Context, args RemittanceIDParams) (any, error) {
 	if err := internal.RequireID(args.RemittanceID, "remittance_id"); err != nil {
 		return nil, err
 	}
-	return doJSON(ctx, "holded.remittances.get", false, http.MethodGet, "/remittances/"+args.RemittanceID, url.Values{}, nil, nil)
+	return doJSON(ctx, "holded.remittances.get", false, http.MethodGet, "/remittances/"+url.PathEscape(args.RemittanceID), url.Values{}, nil, nil)
 }
 
 func AddRemittanceTools(m *server.MCPServer) {

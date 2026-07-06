@@ -32,10 +32,9 @@ var documentTypes = []string{
 type ListParams struct {
 	Page     int      `json:"page,omitempty" jsonschema:"description=Page number starting from 1"`
 	Limit    int      `json:"limit,omitempty" jsonschema:"description=Maximum number of items to return between 1 and 500"`
-	Summary  bool     `json:"summary,omitempty" jsonschema:"description=Return only metadata when supported"`
-	Fields   []string `json:"fields,omitempty" jsonschema:"description=Optional list of fields to keep in each returned object"`
-	StartTmp string   `json:"starttmp,omitempty" jsonschema:"description=Start Unix timestamp filter"`
-	EndTmp   string   `json:"endtmp,omitempty" jsonschema:"description=End Unix timestamp filter"`
+	Fields   []string `json:"fields,omitempty" jsonschema:"description=Optional list of top-level fields to keep in each returned object; other fields are stripped from the response to save tokens"`
+	StartTmp string   `json:"starttmp,omitempty" jsonschema:"description=Start Unix timestamp filter in seconds"`
+	EndTmp   string   `json:"endtmp,omitempty" jsonschema:"description=End Unix timestamp filter in seconds"`
 }
 
 func readOnlyOptions(title string) []mcp.ToolOption {
@@ -84,6 +83,27 @@ func doJSON(ctx context.Context, toolName string, write bool, method, path strin
 	return internal.Wrap(internal.MaskSensitive(payload), meta), nil
 }
 
+// doJSONList is doJSON for GET list endpoints: it additionally strips each
+// returned object down to the requested fields before wrapping the response.
+func doJSONList(ctx context.Context, toolName, path string, q url.Values, meta map[string]any, fields []string) (any, error) {
+	if err := ensureToolAllowed(ctx, toolName, false); err != nil {
+		return nil, err
+	}
+	client, err := requireClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req, err := client.NewRequest(http.MethodGet, path, q, nil)
+	if err != nil {
+		return nil, err
+	}
+	var payload any
+	if err := client.DoJSON(req.WithContext(ctx), &payload); err != nil {
+		return nil, err
+	}
+	return internal.Wrap(internal.FilterFields(internal.MaskSensitive(payload), fields), meta), nil
+}
+
 func doRawBase64(ctx context.Context, toolName, path string) (any, error) {
 	if err := ensureToolAllowed(ctx, toolName, false); err != nil {
 		return nil, err
@@ -127,9 +147,8 @@ func addListParams(q url.Values, args ListParams) (url.Values, map[string]any, e
 		q.Set("endtmp", args.EndTmp)
 	}
 	meta := map[string]any{
-		"page":    page,
-		"limit":   limit,
-		"summary": args.Summary,
+		"page":  page,
+		"limit": limit,
 	}
 	if len(args.Fields) > 0 {
 		meta["fields"] = args.Fields
